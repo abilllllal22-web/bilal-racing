@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Balym Amirulla Racing</title>
+<title>Bilal Racing</title>
 <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Exo+2:ital,wght@0,400;0,600;1,800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0a0c14;--panel:#131724;--line:#252a3a;--red:#ff3d2e;--yel:#ffd23f;--txt:#eef1f8;--mut:#8b93a7}
@@ -47,16 +47,42 @@ kbd{background:#1b2030;border:1px solid #333a50;border-bottom-width:3px;border-r
 #toast{position:absolute;left:50%;top:86px;transform:translateX(-50%);font-size:18px;color:var(--yel);opacity:0;transition:opacity .3s;white-space:nowrap}
 #hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);font:600 12px 'Exo 2',sans-serif;color:#cfd5e6;background:rgba(10,12,20,.6);padding:6px 12px;border-radius:8px;white-space:nowrap;transition:opacity 1s}
 @media(max-width:760px){#hint{display:none}#big{font-size:70px}}
+.mp{background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:14px}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.btn{font:400 14px 'Russo One',sans-serif;padding:10px 16px;border-radius:10px;border:0;cursor:pointer;background:#232a3e;color:var(--txt)}
+.btn.y{background:var(--yel);color:#14100a}.btn.r{background:#3a1d22;color:#ff8a80}.btn:disabled{opacity:.45;cursor:default}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}@media(max-width:700px){.cols2{grid-template-columns:1fr}}
+.sub{font:400 13px 'Russo One',sans-serif;letter-spacing:1px;color:var(--mut);text-transform:uppercase;display:block;margin:8px 0 4px}
+#srch{width:100%;background:#0f1320;border:2px solid var(--line);border-radius:10px;color:var(--txt);font:600 15px 'Exo 2',sans-serif;padding:9px 12px;outline:none}#srch:focus{border-color:var(--yel)}
+.pl{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#0f1320;border-radius:9px;margin-top:6px;font-size:14px;min-height:42px}
+.pl .dot{width:12px;height:12px;border-radius:50%;flex:none}.pl .btn{margin-left:auto;padding:6px 10px;font-size:12px}
+.pl.inv{border:2px solid var(--yel);background:#1d1a10}
+.mut{color:var(--mut);font-size:13px}
+#lb{left:12px;top:72px;display:none;min-width:180px;font:600 13px 'Exo 2',sans-serif}
+#lb div{display:flex;gap:7px;align-items:center;margin-top:3px}#lb .dot{width:9px;height:9px;border-radius:50%}#lb .me{color:var(--yel)}
+#res{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(5,6,12,.55);pointer-events:auto}
+.rbox{background:var(--panel);border:2px solid var(--yel);border-radius:16px;padding:20px 24px;min-width:min(340px,90vw)}
+.rbox h3{font-weight:400;font-size:26px;font-style:italic;margin-bottom:10px}
+.rr{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font:600 15px 'Exo 2',sans-serif}.rr span:last-child{margin-left:auto;font-variant-numeric:tabular-nums}
 </style></head><body>
 <canvas id="game" tabindex="0"></canvas>
 <div id="menu"><div class="wrap">
- <h1>BALYM AMIRULLA <b>RACING</b></h1><div class="check"></div>
+ <h1>BILAL <b>RACING</b></h1><div class="check"></div>
  <p class="tag">Аркадные гонки с видом сверху. Выбери технику, трассу — и на старт.</p>
  <h2>Никнейм</h2><input id="nick" maxlength="14" placeholder="Твой ник" autocomplete="off">
+ <h2>Мультиплеер</h2>
+ <div class="mp" id="mpbox">
+  <div id="mpst" class="mut">Подключение к онлайну…</div>
+  <div id="mpinv"></div>
+  <div class="cols2" id="mpmain" style="display:none">
+   <div><span class="sub">Твоя группа</span><div id="mpgrp"></div><div class="bar" id="mpact"></div></div>
+   <div><span class="sub">Найти игрока по нику</span><input id="srch" placeholder="Введи никнейм…" autocomplete="off"><div id="mpfind"></div></div>
+  </div>
+ </div>
  <h2>Техника</h2><div class="row" id="vehs"></div>
  <h2>Цвет</h2><div class="sw" id="cols"></div>
  <h2>Трасса</h2><div class="row" id="maps"></div>
- <button id="go">СТАРТ ▶</button>
+ <button id="go">СОЛО-ЗАЕЗД ▶</button>
  <p class="keys"><kbd>W</kbd> вперёд &nbsp; <kbd>S</kbd> назад &nbsp; <kbd>A</kbd> влево &nbsp; <kbd>D</kbd> вправо &nbsp; <kbd>Пробел</kbd> тормоз &nbsp; <kbd>Shift</kbd> ускорение (нитро) &nbsp; <kbd>R</kbd> вернуться на трассу &nbsp; <kbd>Esc</kbd> меню</p>
 </div></div>
 <div id="hud">
@@ -65,7 +91,9 @@ kbd{background:#1b2030;border:1px solid #333a50;border-bottom-width:3px;border-r
  <div class="pill" id="hr"><small>Лучший</small><span id="best">—</span><small style="margin-top:4px">Прошлый</small><span id="last">—</span></div>
  <button id="mb">☰ МЕНЮ</button>
  <div class="pill" id="hs"><span id="spd">0</span> <span style="font-size:13px;color:#8b93a7">км/ч</span><small style="margin-top:6px">Нитро</small><div id="nb"><u id="nu"></u></div></div>
+ <div class="pill" id="lb"></div>
  <div id="big"></div><div id="toast"></div>
+ <div id="res"><div class="rbox"><h3>🏁 Результаты</h3><div id="rtab"></div><div class="bar"><button class="btn y" id="rback">В ЛОББИ</button></div></div></div>
  <div id="hint">W газ · S назад · A/D руль · ПРОБЕЛ тормоз · SHIFT нитро · R на трассу · ESC меню</div>
 </div>
 <script>
@@ -192,10 +220,70 @@ function buildMenu(){
   b.innerHTML=`<canvas width="440" height="300"></canvas><h3>${m.name}</h3><p>${m.desc}</p><p style="margin-top:6px;color:#ffd23f">Рекорд: ${bt?fmt(+bt):'—'}</p>`;
   const c=b.firstChild.getContext('2d'),k=440/WW;c.fillStyle=m.ground;c.fillRect(0,0,440,300);c.scale(k,k);c.translate(0,-60);c.lineJoin='round';trackPath(c,m.pts);c.strokeStyle=m.ka;c.lineWidth=RW+60;c.stroke();c.strokeStyle=m.road;c.lineWidth=RW+10;c.stroke();
   blob(c,m.pts[0][0],m.pts[0][1],60,'#fff');b.onclick=()=>{mapI=i;buildMenu()};mb.appendChild(b)});
+ if(typeof setP=='function'){setP({col,veh});renderMP()}
 }
 function fmt(t){const m=t/60|0,s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(2)}
 $('nick').value=ls.get('br_nick')||'';
-$('go').onclick=start;$('mb').onclick=toMenu;
+$('go').onclick=()=>start();$('mb').onclick=toMenu;$('rback').onclick=toMenu;
+
+// ---------- мультиплеер (онлайн-комната) ----------
+let room=null,roomTried=0,peers=[],myGrp=null,amHost=false,invited=[],ignored=new Set(),lastStart=null,mpNote='';
+const pres={};
+function setP(p){Object.assign(pres,p);if(room)room.presence(p).catch(()=>{})}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+const cNick=n=>(typeof n=='string'&&n.trim()?n.trim():'Игрок').slice(0,14);
+const cCol=c=>typeof c=='string'&&/^#[0-9a-f]{6}$/i.test(c)?c:'#ffffff';
+const cVeh=v=>v=='bike'?'bike':'car';
+const curNick=()=>($('nick').value.trim()||'Bilal').slice(0,14);
+const others=()=>peers.filter(p=>!p.sameTab&&p.kind=='viewer'&&p.presence&&p.presence.nick);
+const myPeer=()=>{const m=peers.find(p=>p.sameTab);return m&&m.peer};
+const hostOf=c=>peers.find(p=>p.presence&&p.presence.grp===c&&p.presence.host);
+const membersOf=c=>peers.filter(p=>p.presence&&p.presence.grp===c&&p.presence.nick);
+(async()=>{
+ try{if(window.claude&&claude.use)room=await claude.use('room')}catch(e){room=null}
+ roomTried=1;
+ if(room){setP({nick:curNick(),col,veh,grp:null,host:0,inv:[]});
+  room.onPeers(c=>{peers=c.peers;onRoom()},()=>{room=null;renderMP()});}
+ renderMP();
+})();
+$('nick').addEventListener('input',()=>{setP({nick:curNick()});renderMP()});
+$('srch').addEventListener('input',renderMP);
+function onRoom(){
+ if(myGrp&&!amHost){const h=hostOf(myGrp);
+  if(!h){myGrp=null;setP({grp:null,host:0});mpNote='Хост распустил группу.'}
+  else if(h.presence.start&&h.presence.start.id&&h.presence.start.id!==lastStart&&!S){const st=h.presence.start;lastStart=st.id;
+   start({id:String(st.id).slice(0,20),map:Math.max(0,Math.min(MAPS.length-1,st.map|0)),laps:Math.max(1,Math.min(9,st.laps|0||3))})}}
+ if(amHost){const live=invited.filter(id=>peers.some(p=>p.peer===id));if(live.length!==invited.length){invited=live;setP({inv:invited})}}
+ if(!S)renderMP();
+}
+function renderMP(){
+ const st=$('mpst'),main=$('mpmain');
+ if(!room){st.textContent=roomTried?'Онлайн недоступен в этом окне. Открой игру по ссылке claude.ai, войдя в аккаунт — тогда появится мультиплеер. Соло-режим работает.':'Подключение к онлайну…';main.style.display='none';$('mpinv').innerHTML='';return}
+ main.style.display='';const me=myPeer(),ot=others();
+ st.innerHTML=`<span style="color:#27d17f">●</span> Онлайн сейчас: <b>${ot.length+1}</b> ${mpNote?' · '+esc(mpNote):''}`;
+ const invs=ot.filter(p=>p.presence.host&&p.presence.grp&&p.presence.grp!==myGrp&&Array.isArray(p.presence.inv)&&p.presence.inv.includes(me)&&!ignored.has(p.presence.grp));
+ $('mpinv').innerHTML=invs.map(p=>`<div class="pl inv"><span class="dot" style="background:${cCol(p.presence.col)}"></span><span><b>${esc(cNick(p.presence.nick))}</b> зовёт тебя в свою группу</span><button class="btn y" data-a="acc" data-p="${esc(p.peer)}">Принять</button><button class="btn" data-a="dec" data-p="${esc(p.peer)}">✕</button></div>`).join('');
+ const row=(p,extra)=>{const q=p.presence;return`<div class="pl"><span class="dot" style="background:${cCol(q.col)}"></span>${cVeh(q.veh)=='bike'?'🏍':'🏎'} <b>${esc(cNick(q.nick))}</b>${q.host?' 👑':''}${p.sameTab?' <span class="mut">(ты)</span>':''}${extra||''}</div>`};
+ if(!myGrp){$('mpgrp').innerHTML='<p class="mut">Ты пока не в группе. Создай свою или прими приглашение.</p>';$('mpact').innerHTML='<button class="btn y" data-a="new">＋ Создать группу</button>'}
+ else{const ms=membersOf(myGrp);let h=ms.map(p=>row(p)).join('');
+  if(amHost)h+=invited.filter(id=>!ms.some(m=>m.peer===id)).map(id=>{const p=peers.find(x=>x.peer===id);return p?row(p,' <span class="mut" style="margin-left:auto">ждём ответа…</span>'):''}).join('');
+  $('mpgrp').innerHTML=h;
+  $('mpact').innerHTML=amHost?`<button class="btn y" data-a="go">СТАРТ ГРУППЫ ▶</button><span class="mut">Трасса: ${MAPS[mapI].name} · 3 круга</span><button class="btn r" data-a="leave">Распустить</button>`
+   :`<span class="mut">Ждём, пока хост 👑 запустит гонку…</span><button class="btn r" data-a="leave">Покинуть</button>`}
+ const q=$('srch').value.trim().toLowerCase(),inMine=p=>myGrp&&p.presence.grp===myGrp;
+ const found=ot.filter(p=>!inMine(p)&&(!q||cNick(p.presence.nick).toLowerCase().includes(q))).slice(0,8);
+ $('mpfind').innerHTML=found.length?found.map(p=>row(p,amHost&&invited.includes(p.peer)?'<button class="btn" disabled>Приглашён ✓</button>':`<button class="btn y" data-a="inv" data-p="${esc(p.peer)}">Пригласить</button>`)).join('')
+  :`<p class="mut" style="margin-top:8px">${ot.length?'Никого с таким ником.':'Сейчас больше никого нет онлайн. Отправь друзьям ссылку на игру.'}</p>`;
+}
+function mkGroup(){myGrp=Math.random().toString(36).slice(2,8);amHost=true;invited=[];mpNote='';setP({grp:myGrp,host:1,inv:[],start:null})}
+$('mpbox').addEventListener('click',e=>{const b=e.target.closest('button[data-a]');if(!b||!room)return;const a=b.dataset.a,pid=b.dataset.p;
+ if(a=='new')mkGroup();
+ else if(a=='leave'){myGrp=null;amHost=false;invited=[];setP({grp:null,host:0,inv:[],start:null})}
+ else if(a=='inv'){if(!myGrp||!amHost)mkGroup();if(!invited.includes(pid)){invited.push(pid);setP({inv:invited.slice()})}}
+ else if(a=='acc'){const h=peers.find(p=>p.peer===pid);if(h&&h.presence.grp){myGrp=String(h.presence.grp).slice(0,12);amHost=false;invited=[];mpNote='';lastStart=h.presence.start&&h.presence.start.id;setP({grp:myGrp,host:0,inv:[],start:null})}}
+ else if(a=='dec'){const h=peers.find(p=>p.peer===pid);if(h)ignored.add(h.presence.grp)}
+ else if(a=='go'){const s={id:Date.now().toString(36),map:mapI,laps:3};lastStart=s.id;setP({start:s});start(s)}
+ renderMP()});
 $('nick').addEventListener('keydown',e=>{if(e.key=='Enter')start()});
 
 // ---------- игра ----------
@@ -207,22 +295,40 @@ addEventListener('keydown',e=>{if(!S)return;if(KM[e.code]){K[KM[e.code]]=1;e.pre
 addEventListener('keyup',e=>{if(KM[e.code])K[KM[e.code]]=0});
 addEventListener('blur',()=>{for(const k in K)K[k]=0});
 let toastT=0;function toast(s){$('toast').textContent=s;$('toast').style.opacity=1;toastT=2.5}
-function start(){
- nick=($('nick').value.trim()||'Bilal').slice(0,14);ls.set('br_nick',nick);
+function start(mp){
+ mp=mp&&mp.id?mp:null;if(mp)mapI=mp.map;
+ nick=curNick();ls.set('br_nick',nick);setP({nick});
  const m=MAPS[mapI],b=buildMap(m),a=tang(m.pts,0),p0=m.pts[0];
  S={m,b,pts:m.pts,p:{x:p0[0]-Math.cos(a)*40,y:p0[1]-Math.sin(a)*40,a,vx:0,vy:0,n:1},lap:1,stage:0,t:0,count:3.2,last:0,best:+ls.get('br_'+m.id+'_'+veh)||0,parts:[],cx:0,cy:0,
   flakes:Array.from({length:90},()=>[Math.random(),Math.random(),.05+Math.random()*.1])};
+ Object.assign(S,{mp,tot:0,fin:0,G:{},ghosts:[],rank:[],sendT:0,uiT:0,pr:0});
+ if(mp){const sh=(Math.random()-.5)*60;S.p.x-=Math.sin(a)*sh;S.p.y+=Math.cos(a)*sh}
  S.cx=S.p.x;S.cy=S.p.y;for(const k in K)K[k]=0;
+ $('lb').style.display=mp?'block':'none';$('res').style.display='none';
  $('menu').style.display='none';$('hud').style.display='block';$('nk').textContent=nick;$('mapn').textContent=m.name+' · '+VEH[veh].name;
- $('best').textContent=S.best?fmt(S.best):'—';$('last').textContent='—';$('lap').textContent=1;$('hint').style.opacity=1;setTimeout(()=>$('hint').style.opacity=0,9000);
+ $('best').textContent=S.best?fmt(S.best):'—';$('last').textContent='—';$('lap').textContent=mp?'1/'+mp.laps:1;$('hint').style.opacity=1;setTimeout(()=>$('hint').style.opacity=0,9000);
  cv.focus();
 }
-function toMenu(){S=null;$('hud').style.display='none';$('menu').style.display='block';buildMenu()}
+function toMenu(){if(S&&S.mp)setP({rc:null,x:null,y:null,a:null,pr:null,fin:null});S=null;$('hud').style.display='none';$('menu').style.display='block';buildMenu()}
 function respawn(){if(!S)return;const n=nearest(S.pts,S.p.x,S.p.y),q=S.pts[n.i];Object.assign(S.p,{x:q[0],y:q[1],a:tang(S.pts,n.i),vx:0,vy:0})}
 
+function netTick(dt,nr){
+ let f=nr.i/S.pts.length;if(S.stage==0&&f>.75)f-=1;S.pr=S.fin?S.mp.laps+1:(S.lap-1)+f;
+ if((S.sendT-=dt)<=0){S.sendT=.066;setP({rc:S.mp.id,x:Math.round(S.p.x),y:Math.round(S.p.y),a:+S.p.a.toFixed(2),pr:+S.pr.toFixed(3),fin:S.fin?+S.fin.toFixed(2):0})}
+ const k=Math.min(1,dt*10);S.ghosts=[];
+ for(const p of room?room.peers():[]){if(p.sameTab)continue;const q=p.presence;if(!q||q.rc!==S.mp.id||typeof q.x!='number'||typeof q.y!='number')continue;
+  const ta=+q.a||0;let g=S.G[p.peer]||(S.G[p.peer]={x:q.x,y:q.y,a:ta});g.x+=(q.x-g.x)*k;g.y+=(q.y-g.y)*k;let da=ta-g.a;da=Math.atan2(Math.sin(da),Math.cos(da));g.a+=da*k;
+  S.ghosts.push({x:g.x,y:g.y,a:g.a,nick:cNick(q.nick),col:cCol(q.col),veh:cVeh(q.veh),pr:+q.pr||0,fin:+q.fin||0})}
+ S.rank=[{me:1,nick,col,pr:S.pr,fin:S.fin},...S.ghosts].sort((a,b)=>(b.fin?1:0)-(a.fin?1:0)||(a.fin&&b.fin?a.fin-b.fin:b.pr-a.pr));
+ if((S.uiT-=dt)>0)return;S.uiT=.25;const n=S.rank.length,pos=S.rank.findIndex(r=>r.me)+1;
+ $('lb').innerHTML=`<small>Место ${pos} из ${n}</small>`+S.rank.map((r,i)=>`<div class="${r.me?'me':''}"><b>${i+1}</b><span class="dot" style="background:${r.col}"></span>${esc(r.nick)}${r.fin?' 🏁':''}</div>`).join('');
+ if(S.fin){$('res').style.display='flex';$('rtab').innerHTML=S.rank.map((r,i)=>`<div class="rr" style="${r.me?'color:#ffd23f':''}"><b>${['🥇','🥈','🥉'][i]||i+1}</b><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${r.col}"></span>${esc(r.nick)}<span>${r.fin?fmt(r.fin):'в гонке…'}</span></div>`).join('')}
+}
+function label(x,y,t,c){ctx.font='600 13px "Exo 2",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';const tw=ctx.measureText(t).width+14;
+ ctx.fillStyle='rgba(10,12,20,.7)';ctx.fillRect(x-tw/2,y-48,tw,18);ctx.fillStyle=c;ctx.fillText(t,x,y-38.5)}
 function update(dt){
  const v=VEH[veh],p=S.p,m=S.m;
- if(S.count>-1)S.count-=dt;const live=S.count<=0;if(live)S.t+=dt;
+ if(S.count>-1)S.count-=dt;const live=S.count<=0&&!S.fin;if(live)S.t+=dt;
  const nr=nearest(S.pts,p.x,p.y),on=nr.d<RW/2+10;
  let fx=Math.cos(p.a),fy=Math.sin(p.a),vf=p.vx*fx+p.vy*fy;
  const st=(K.d?1:0)-(K.a?1:0);
@@ -248,8 +354,11 @@ function update(dt){
  for(const q of S.parts){q.x+=q.vx*dt;q.y+=q.vy*dt;q.l-=dt}S.parts=S.parts.filter(q=>q.l>0);
  const qd=nr.i/S.pts.length*4|0;
  if(on&&qd==(S.stage+1)%4){S.stage=qd;if(qd==0){S.last=S.t;const rec=!S.best||S.t<S.best;if(rec){S.best=S.t;ls.set('br_'+m.id+'_'+veh,S.t.toFixed(3))}
-  toast((rec?'🏆 Новый рекорд! ':'Круг '+S.lap+' — ')+fmt(S.t));S.lap++;S.t=0;$('lap').textContent=S.lap;$('best').textContent=fmt(S.best);$('last').textContent=fmt(S.last)}}
- $('tm').textContent=fmt(S.t);$('spd').textContent=Math.round(sp*.45);$('nu').style.width=p.n*100+'%';
+  toast((rec?'🏆 Новый рекорд! ':'Круг '+S.lap+' — ')+fmt(S.t));S.tot+=S.t;S.lap++;S.t=0;
+  if(S.mp&&S.lap>S.mp.laps){S.fin=S.tot;toast('🏁 Финиш! '+fmt(S.tot))}
+  $('lap').textContent=S.mp?Math.min(S.lap,S.mp.laps)+'/'+S.mp.laps:S.lap;$('best').textContent=fmt(S.best);$('last').textContent=fmt(S.last)}}
+ if(S.mp)netTick(dt,nr);
+ $('tm').textContent=fmt(S.fin||S.t);$('spd').textContent=Math.round(sp*.45);$('nu').style.width=p.n*100+'%';
  $('big').textContent=S.count>0?Math.ceil(S.count):S.count>-1?'GO!':'';
  if(toastT>0&&(toastT-=dt)<=0)$('toast').style.opacity=0;
  const k=Math.min(1,dt*5);S.cx+=(p.x+p.vx*.3-S.cx)*k;S.cy+=(p.y+p.vy*.3-S.cy)*k;
@@ -260,6 +369,7 @@ function render(){
  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle=m.ground;ctx.fillRect(0,0,cv.width,cv.height);
  ctx.setTransform(z,0,0,z,-cx*z,-cy*z);ctx.drawImage(S.b.cv,0,0);
  for(const q of S.parts)blob(ctx,q.x,q.y,q.s*(1.4-q.l),`rgba(${q.c},${Math.min(1,q.l*1.6)})`);
+ for(const g of S.ghosts){ctx.save();ctx.translate(g.x,g.y);ctx.rotate(g.a);ctx.scale(1.3,1.3);drawVeh(ctx,g.veh,g.col);ctx.restore();label(g.x,g.y,g.nick,'#fff')}
  ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);
  if(m.night){const gr=ctx.createRadialGradient(18,0,5,18,0,240);gr.addColorStop(0,'rgba(255,245,200,.5)');gr.addColorStop(1,'rgba(255,245,200,0)');ctx.fillStyle=gr;ctx.beginPath();ctx.moveTo(18,0);ctx.arc(18,0,240,-.38,.38);ctx.closePath();ctx.fill()}
  ctx.scale(1.3,1.3);drawVeh(ctx,veh,col);ctx.restore();
@@ -267,14 +377,13 @@ function render(){
  const s=S.pts[0];ctx.save();ctx.translate(s[0],s[1]);ctx.rotate(tang(S.pts,0));ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(14,-RW/2-22,22,RW+52);ctx.fillStyle='#1b2030';ctx.fillRect(6,-RW/2-30,22,RW+60);
  ctx.fillStyle='#ff3d2e';ctx.fillRect(6,-RW/2-30,22,14);ctx.fillRect(6,RW/2+16,22,14);ctx.rotate(Math.PI/2);ctx.fillStyle='#ffd23f';ctx.font='13px "Russo One",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('BILAL RACING',0,-17);ctx.restore();
  // ник
- ctx.font='600 13px "Exo 2",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';const tw=ctx.measureText(nick).width+14;
- ctx.fillStyle='rgba(10,12,20,.7)';ctx.fillRect(p.x-tw/2,p.y-48,tw,18);ctx.fillStyle='#ffd23f';ctx.fillText(nick,p.x,p.y-38.5);
+ label(p.x,p.y,nick,'#ffd23f');
  ctx.setTransform(dpr,0,0,dpr,0,0);
  if(m.snow){ctx.fillStyle='rgba(255,255,255,.85)';for(const f of S.flakes){f[1]+=f[2]*.016;f[0]+=Math.sin(f[1]*20)*.0006;if(f[1]>1){f[1]=0;f[0]=Math.random()}ctx.fillRect(f[0]*W,f[1]*H,2.5,2.5)}}
  // миникарта
  const mw=Math.min(190,W*.3),k=mw/WW,mh=WH*k,mx=W-mw-12,my=H-mh-12;ctx.fillStyle='rgba(10,12,20,.72)';ctx.fillRect(mx-6,my-6,mw+12,mh+12);
  ctx.save();ctx.translate(mx,my);ctx.scale(k,k);ctx.lineJoin='round';trackPath(ctx,S.pts);ctx.strokeStyle=m.ka;ctx.lineWidth=RW+50;ctx.stroke();ctx.strokeStyle='#2a3046';ctx.lineWidth=RW;ctx.stroke();
- blob(ctx,S.pts[0][0],S.pts[0][1],45,'#fff');blob(ctx,p.x,p.y,70,col);ctx.restore();
+ blob(ctx,S.pts[0][0],S.pts[0][1],45,'#fff');for(const g of S.ghosts)blob(ctx,g.x,g.y,55,g.col);blob(ctx,p.x,p.y,70,col);ctx.restore();
 }
 let lt=0;function loop(t){const dt=Math.min(.033,(t-lt)/1000||0);lt=t;if(S){update(dt);if(S)render()}requestAnimationFrame(loop)}
 buildMenu();requestAnimationFrame(loop);
