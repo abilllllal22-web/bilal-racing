@@ -2,6 +2,7 @@
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Bilal Racing</title>
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Exo+2:ital,wght@0,400;0,600;1,800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0a0c14;--panel:#131724;--line:#252a3a;--red:#ff3d2e;--yel:#ffd23f;--txt:#eef1f8;--mut:#8b93a7}
@@ -226,64 +227,109 @@ function fmt(t){const m=t/60|0,s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(2)}
 $('nick').value=ls.get('br_nick')||'';
 $('go').onclick=()=>start();$('mb').onclick=toMenu;$('rback').onclick=toMenu;
 
-// ---------- мультиплеер (онлайн-комната) ----------
-let room=null,roomTried=0,peers=[],myGrp=null,amHost=false,invited=[],ignored=new Set(),lastStart=null,mpNote='';
-const pres={};
-function setP(p){Object.assign(pres,p);if(room)room.presence(p).catch(()=>{})}
+// ---------- мультиплеер (PeerJS: прямое соединение браузеров) ----------
+let net=null,netSt='load',myGrp=null,amHost=false,lastStart=null,mpNote='',hostConn=null,roster=[],nickTimer=0,retry=0;
+const members=new Map(),sent=new Map(),invites=new Map(),remote=new Map(),pres={};
+const PFX='bilalracing-v1-';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
 const cNick=n=>(typeof n=='string'&&n.trim()?n.trim():'Игрок').slice(0,14);
 const cCol=c=>typeof c=='string'&&/^#[0-9a-f]{6}$/i.test(c)?c:'#ffffff';
 const cVeh=v=>v=='bike'?'bike':'car';
 const curNick=()=>($('nick').value.trim()||'Bilal').slice(0,14);
-const others=()=>peers.filter(p=>!p.sameTab&&p.kind=='viewer'&&p.presence&&p.presence.nick);
-const myPeer=()=>{const m=peers.find(p=>p.sameTab);return m&&m.peer};
-const hostOf=c=>peers.find(p=>p.presence&&p.presence.grp===c&&p.presence.host);
-const membersOf=c=>peers.filter(p=>p.presence&&p.presence.grp===c&&p.presence.nick);
-(async()=>{
- try{if(window.claude&&claude.use)room=await claude.use('room')}catch(e){room=null}
- roomTried=1;
- if(room){setP({nick:curNick(),col,veh,grp:null,host:0,inv:[]});
-  room.onPeers(c=>{peers=c.peers;onRoom()},()=>{room=null;renderMP()});}
- renderMP();
-})();
-$('nick').addEventListener('input',()=>{setP({nick:curNick()});renderMP()});
-$('srch').addEventListener('input',renderMP);
-function onRoom(){
- if(myGrp&&!amHost){const h=hostOf(myGrp);
-  if(!h){myGrp=null;setP({grp:null,host:0});mpNote='Хост распустил группу.'}
-  else if(h.presence.start&&h.presence.start.id&&h.presence.start.id!==lastStart&&!S){const st=h.presence.start;lastStart=st.id;
-   start({id:String(st.id).slice(0,20),map:Math.max(0,Math.min(MAPS.length-1,st.map|0)),laps:Math.max(1,Math.min(9,st.laps|0||3))})}}
- if(amHost){const live=invited.filter(id=>peers.some(p=>p.peer===id));if(live.length!==invited.length){invited=live;setP({inv:invited})}}
+const pid=n=>PFX+Array.from(new TextEncoder().encode(cNick(n).toLowerCase())).map(b=>b.toString(16).padStart(2,'0')).join('');
+const info=()=>({nick:pres.nick||curNick(),col:pres.col||col,veh:pres.veh||veh});
+const tx=(c,m)=>{try{if(c&&c.open)c.send(m)}catch(e){}};
+function setP(p){const old=pres.nick;Object.assign(pres,p);
+ if(p.nick!==undefined&&p.nick!==old&&net){clearTimeout(nickTimer);nickTimer=setTimeout(()=>{if(!myGrp&&!S)connect()},1200)}
+ if(amHost)sendRoster();else if(hostConn)tx(hostConn,{t:'me',...info()})}
+function connect(){
+ if(typeof Peer=='undefined'){netSt='nolib';return renderMP()}
+ if(net)try{net.destroy()}catch(e){}
+ netSt='conn';renderMP();const n=net=new Peer(pid(curNick()),{debug:0});
+ n.on('open',()=>{if(n!==net)return;netSt='ok';retry=0;renderMP()});
+ n.on('connection',c=>{if(n===net)wire(c)});
+ n.on('disconnected',()=>{if(n!==net)return;netSt='conn';renderMP();setTimeout(()=>{try{if(n===net&&!n.destroyed)n.reconnect()}catch(e){}},1500)});
+ n.on('error',e=>{if(n!==net)return;const t=e&&e.type;
+  if(t=='peer-unavailable'){const m=String(e.message||'');for(const [id,s] of sent)if(m.includes(id)&&s.st=='wait')s.st='off';renderMP();return}
+  if(t=='unavailable-id'){if(retry++<3){netSt='conn';setTimeout(()=>{if(n===net)connect()},3000)}else netSt='taken';renderMP();return}
+  if(t=='network'||t=='server-error'||t=='socket-error'||t=='socket-closed'){netSt='conn';renderMP();setTimeout(()=>{if(n===net)connect()},4000)}});
+}
+function wire(c){
+ c.on('data',m=>onMsg(c,m));
+ c.on('close',()=>{
+  if(members.has(c.peer)&&members.get(c.peer).conn===c){members.delete(c.peer);remote.delete(c.peer);sendRoster()}
+  if(hostConn===c){hostConn=null;myGrp=null;roster=[];remote.clear();mpNote='Хост покинул группу.'}
+  if(invites.has(c.peer)&&invites.get(c.peer).conn===c)invites.delete(c.peer);
+  renderMP()});
+}
+function onMsg(c,m){if(!m||typeof m!='object')return;const from=c.peer;
+ switch(m.t){
+ case 'invite':if(!myGrp||myGrp!==m.grp){invites.set(from,{conn:c,nick:cNick(m.nick),col:cCol(m.col),grp:String(m.grp).slice(0,12)})}break;
+ case 'accept':{const s=sent.get(from);if(!amHost||!s)return tx(c,{t:'gone'});s.st='in';members.set(from,{conn:c,...clean(m)});sendRoster();
+  if(lastStart&&S&&S.mp)tx(c,{t:'note',s:'Гонка уже идёт — дождись следующего старта.'});break}
+ case 'decline':{const s=sent.get(from);if(s)s.st='no';try{c.close()}catch(e){}break}
+ case 'me':if(members.has(from)){Object.assign(members.get(from),clean(m));sendRoster()}break;
+ case 'roster':if(c===hostConn){roster=(Array.isArray(m.list)?m.list:[]).slice(0,12).map(r=>({id:String(r.id),...clean(r),host:!!r.host}))}break;
+ case 'gone':if(c===hostConn){hostConn=null;myGrp=null;roster=[]}mpNote='Приглашение уже недействительно.';break;
+ case 'note':mpNote=String(m.s||'').slice(0,80);break;
+ case 'start':if(c===hostConn&&m.id&&m.id!==lastStart){lastStart=m.id;if(S)toMenu();
+  start({id:String(m.id).slice(0,20),map:Math.max(0,Math.min(MAPS.length-1,m.map|0)),laps:Math.max(1,Math.min(9,m.laps|0||3))})}break;
+ case 'st':{const id=c===hostConn&&m.id?String(m.id):from;if(id===(net&&net.id))break;if(c!==hostConn&&!members.has(from))break;
+  if(m.rc===null||m.rc===undefined){remote.delete(id)}else remote.set(id,{rc:String(m.rc),x:+m.x||0,y:+m.y||0,a:+m.a||0,pr:+m.pr||0,fin:+m.fin||0,...clean(m)});
+  if(amHost&&members.has(from))for(const [k,v] of members)if(k!==from)tx(v.conn,{...m,id:from});break}
+ }
  if(!S)renderMP();
 }
+function clean(m){return{nick:cNick(m.nick),col:cCol(m.col),veh:cVeh(m.veh)}}
+function sendRoster(){if(!amHost)return;const list=[{id:net&&net.id,...info(),host:1},...[...members].map(([k,v])=>({id:k,nick:v.nick,col:v.col,veh:v.veh}))];
+ for(const v of members.values())tx(v.conn,{t:'roster',list});if(!S)renderMP()}
+function sendState(st){const m={t:'st',...info(),...st};if(amHost){for(const v of members.values())tx(v.conn,m)}else if(hostConn)tx(hostConn,m)}
+function leaveGroup(){
+ for(const v of members.values())try{v.conn.close()}catch(e){}
+ for(const s of sent.values())try{s.conn.close()}catch(e){}
+ if(hostConn)try{hostConn.close()}catch(e){}
+ members.clear();sent.clear();remote.clear();hostConn=null;myGrp=null;amHost=false;roster=[]}
+function mkGroup(){leaveGroup();myGrp=Math.random().toString(36).slice(2,8);amHost=true;mpNote=''}
+function invite(n){n=cNick(n);if(!net||netSt!='ok')return;const id=pid(n);
+ if(id===net.id){mpNote='Это твой собственный ник 🙂';return}
+ if(!amHost){if(hostConn){mpNote='Приглашать может только хост группы.';return}mkGroup()}
+ const old=sent.get(id);if(old)try{old.conn.close()}catch(e){}
+ const c=net.connect(id,{reliable:true});const s={conn:c,nick:n,st:'wait'};sent.set(id,s);wire(c);
+ c.on('open',()=>{tx(c,{t:'invite',grp:myGrp,...info()});renderMP()});
+ setTimeout(()=>{if(s.st=='wait'&&!c.open){s.st='off';renderMP()}},9000)}
 function renderMP(){
  const st=$('mpst'),main=$('mpmain');
- if(!room){st.textContent=roomTried?'Онлайн недоступен в этом окне. Открой игру по ссылке claude.ai, войдя в аккаунт — тогда появится мультиплеер. Соло-режим работает.':'Подключение к онлайну…';main.style.display='none';$('mpinv').innerHTML='';return}
- main.style.display='';const me=myPeer(),ot=others();
- st.innerHTML=`<span style="color:#27d17f">●</span> Онлайн сейчас: <b>${ot.length+1}</b> ${mpNote?' · '+esc(mpNote):''}`;
- const invs=ot.filter(p=>p.presence.host&&p.presence.grp&&p.presence.grp!==myGrp&&Array.isArray(p.presence.inv)&&p.presence.inv.includes(me)&&!ignored.has(p.presence.grp));
- $('mpinv').innerHTML=invs.map(p=>`<div class="pl inv"><span class="dot" style="background:${cCol(p.presence.col)}"></span><span><b>${esc(cNick(p.presence.nick))}</b> зовёт тебя в свою группу</span><button class="btn y" data-a="acc" data-p="${esc(p.peer)}">Принять</button><button class="btn" data-a="dec" data-p="${esc(p.peer)}">✕</button></div>`).join('');
- const row=(p,extra)=>{const q=p.presence;return`<div class="pl"><span class="dot" style="background:${cCol(q.col)}"></span>${cVeh(q.veh)=='bike'?'🏍':'🏎'} <b>${esc(cNick(q.nick))}</b>${q.host?' 👑':''}${p.sameTab?' <span class="mut">(ты)</span>':''}${extra||''}</div>`};
+ const S_={load:'Загрузка сетевого модуля…',nolib:'Не удалось загрузить сетевой модуль (проверь интернет или блокировщик рекламы). Соло-режим работает.',
+  conn:'Подключение к сети…',taken:'Ник «'+esc(curNick())+'» уже занят другим игроком в сети — поменяй ник.',ok:'<span style="color:#27d17f">●</span> В сети как <b>'+esc(curNick())+'</b> — друзья могут найти тебя по этому нику'};
+ st.innerHTML=S_[netSt]+(mpNote?' · <span style="color:#ffd23f">'+esc(mpNote)+'</span>':'');
+ main.style.display=netSt=='ok'||myGrp?'':'none';
+ $('mpinv').innerHTML=[...invites].map(([id,v])=>`<div class="pl inv"><span class="dot" style="background:${v.col}"></span><span><b>${esc(v.nick)}</b> зовёт тебя в свою группу</span><button class="btn y" data-a="acc" data-p="${esc(id)}">Принять</button><button class="btn" data-a="dec" data-p="${esc(id)}">✕</button></div>`).join('');
+ const row=(q,extra)=>`<div class="pl"><span class="dot" style="background:${q.col}"></span>${q.veh=='bike'?'🏍':'🏎'} <b>${esc(q.nick)}</b>${q.host?' 👑':''}${q.me?' <span class="mut">(ты)</span>':''}${extra||''}</div>`;
  if(!myGrp){$('mpgrp').innerHTML='<p class="mut">Ты пока не в группе. Создай свою или прими приглашение.</p>';$('mpact').innerHTML='<button class="btn y" data-a="new">＋ Создать группу</button>'}
- else{const ms=membersOf(myGrp);let h=ms.map(p=>row(p)).join('');
-  if(amHost)h+=invited.filter(id=>!ms.some(m=>m.peer===id)).map(id=>{const p=peers.find(x=>x.peer===id);return p?row(p,' <span class="mut" style="margin-left:auto">ждём ответа…</span>'):''}).join('');
-  $('mpgrp').innerHTML=h;
-  $('mpact').innerHTML=amHost?`<button class="btn y" data-a="go">СТАРТ ГРУППЫ ▶</button><span class="mut">Трасса: ${MAPS[mapI].name} · 3 круга</span><button class="btn r" data-a="leave">Распустить</button>`
-   :`<span class="mut">Ждём, пока хост 👑 запустит гонку…</span><button class="btn r" data-a="leave">Покинуть</button>`}
- const q=$('srch').value.trim().toLowerCase(),inMine=p=>myGrp&&p.presence.grp===myGrp;
- const found=ot.filter(p=>!inMine(p)&&(!q||cNick(p.presence.nick).toLowerCase().includes(q))).slice(0,8);
- $('mpfind').innerHTML=found.length?found.map(p=>row(p,amHost&&invited.includes(p.peer)?'<button class="btn" disabled>Приглашён ✓</button>':`<button class="btn y" data-a="inv" data-p="${esc(p.peer)}">Пригласить</button>`)).join('')
-  :`<p class="mut" style="margin-top:8px">${ot.length?'Никого с таким ником.':'Сейчас больше никого нет онлайн. Отправь друзьям ссылку на игру.'}</p>`;
+ else if(amHost){const ST={wait:'ждём ответа…',off:'не в сети',no:'отказался'};
+  $('mpgrp').innerHTML=row({...info(),host:1,me:1})+[...members.values()].map(v=>row(v)).join('')+[...sent.values()].filter(s=>s.st!='in').map(s=>row({nick:s.nick,col:'#555b70',veh:'car'},` <span class="mut" style="margin-left:auto">${ST[s.st]}</span>`)).join('');
+  $('mpact').innerHTML=`<button class="btn y" data-a="go">СТАРТ ГРУППЫ ▶</button><span class="mut">Трасса: ${MAPS[mapI].name} · 3 круга</span><button class="btn r" data-a="leave">Распустить</button>`}
+ else{const me=net&&net.id;$('mpgrp').innerHTML=roster.length?roster.map(r=>row({...r,me:r.id===me})).join(''):'<p class="mut">Подключаемся к группе…</p>';
+  $('mpact').innerHTML=`<span class="mut">Ждём, пока хост 👑 запустит гонку…</span><button class="btn r" data-a="leave">Покинуть</button>`}
+ const q=$('srch').value.trim();
+ $('mpfind').innerHTML=myGrp&&!amHost?'<p class="mut" style="margin-top:8px">Приглашать может только хост группы.</p>'
+  :`<div class="bar"><button class="btn y" data-a="inv" ${q?'':'disabled'}>Пригласить${q?' «'+esc(cNick(q))+'»':''}</button></div><p class="mut" style="margin-top:8px">Друг должен открыть игру у себя и ввести этот же никнейм (регистр не важен).</p>`;
 }
-function mkGroup(){myGrp=Math.random().toString(36).slice(2,8);amHost=true;invited=[];mpNote='';setP({grp:myGrp,host:1,inv:[],start:null})}
-$('mpbox').addEventListener('click',e=>{const b=e.target.closest('button[data-a]');if(!b||!room)return;const a=b.dataset.a,pid=b.dataset.p;
+$('nick').addEventListener('input',()=>{setP({nick:curNick()});renderMP()});
+$('srch').addEventListener('input',renderMP);
+$('srch').addEventListener('keydown',e=>{if(e.key=='Enter'&&$('srch').value.trim()){invite($('srch').value);$('srch').value='';renderMP()}});
+$('mpbox').addEventListener('click',e=>{const b=e.target.closest('button[data-a]');if(!b)return;const a=b.dataset.a,p=b.dataset.p;
  if(a=='new')mkGroup();
- else if(a=='leave'){myGrp=null;amHost=false;invited=[];setP({grp:null,host:0,inv:[],start:null})}
- else if(a=='inv'){if(!myGrp||!amHost)mkGroup();if(!invited.includes(pid)){invited.push(pid);setP({inv:invited.slice()})}}
- else if(a=='acc'){const h=peers.find(p=>p.peer===pid);if(h&&h.presence.grp){myGrp=String(h.presence.grp).slice(0,12);amHost=false;invited=[];mpNote='';lastStart=h.presence.start&&h.presence.start.id;setP({grp:myGrp,host:0,inv:[],start:null})}}
- else if(a=='dec'){const h=peers.find(p=>p.peer===pid);if(h)ignored.add(h.presence.grp)}
- else if(a=='go'){const s={id:Date.now().toString(36),map:mapI,laps:3};lastStart=s.id;setP({start:s});start(s)}
+ else if(a=='leave')leaveGroup();
+ else if(a=='inv'){invite($('srch').value);$('srch').value=''}
+ else if(a=='acc'){const v=invites.get(p);if(v&&v.conn.open){leaveGroup();hostConn=v.conn;myGrp=v.grp;mpNote='';lastStart=null;invites.delete(p);tx(hostConn,{t:'accept',...info()})}else{invites.delete(p);mpNote='Приглашение устарело.'}}
+ else if(a=='dec'){const v=invites.get(p);if(v){tx(v.conn,{t:'decline'});invites.delete(p)}}
+ else if(a=='go'){const s={id:Date.now().toString(36),map:mapI,laps:3};lastStart=s.id;for(const v of members.values())tx(v.conn,{t:'start',...s});start(s)}
  renderMP()});
+pres.nick=curNick();
+(function waitLib(n){if(typeof Peer!='undefined')connect();else if(n>0)setTimeout(()=>waitLib(n-1),300);else{netSt='nolib';renderMP()}})(30);
+addEventListener('beforeunload',()=>{try{net&&net.destroy()}catch(e){}});
+
 $('nick').addEventListener('keydown',e=>{if(e.key=='Enter')start()});
 
 // ---------- игра ----------
@@ -309,15 +355,15 @@ function start(mp){
  $('best').textContent=S.best?fmt(S.best):'—';$('last').textContent='—';$('lap').textContent=mp?'1/'+mp.laps:1;$('hint').style.opacity=1;setTimeout(()=>$('hint').style.opacity=0,9000);
  cv.focus();
 }
-function toMenu(){if(S&&S.mp)setP({rc:null,x:null,y:null,a:null,pr:null,fin:null});S=null;$('hud').style.display='none';$('menu').style.display='block';buildMenu()}
+function toMenu(){if(S&&S.mp)sendState({rc:null});S=null;$('hud').style.display='none';$('menu').style.display='block';buildMenu()}
 function respawn(){if(!S)return;const n=nearest(S.pts,S.p.x,S.p.y),q=S.pts[n.i];Object.assign(S.p,{x:q[0],y:q[1],a:tang(S.pts,n.i),vx:0,vy:0})}
 
 function netTick(dt,nr){
  let f=nr.i/S.pts.length;if(S.stage==0&&f>.75)f-=1;S.pr=S.fin?S.mp.laps+1:(S.lap-1)+f;
- if((S.sendT-=dt)<=0){S.sendT=.066;setP({rc:S.mp.id,x:Math.round(S.p.x),y:Math.round(S.p.y),a:+S.p.a.toFixed(2),pr:+S.pr.toFixed(3),fin:S.fin?+S.fin.toFixed(2):0})}
+ if((S.sendT-=dt)<=0){S.sendT=.066;sendState({rc:S.mp.id,x:Math.round(S.p.x),y:Math.round(S.p.y),a:+S.p.a.toFixed(2),pr:+S.pr.toFixed(3),fin:S.fin?+S.fin.toFixed(2):0})}
  const k=Math.min(1,dt*10);S.ghosts=[];
- for(const p of room?room.peers():[]){if(p.sameTab)continue;const q=p.presence;if(!q||q.rc!==S.mp.id||typeof q.x!='number'||typeof q.y!='number')continue;
-  const ta=+q.a||0;let g=S.G[p.peer]||(S.G[p.peer]={x:q.x,y:q.y,a:ta});g.x+=(q.x-g.x)*k;g.y+=(q.y-g.y)*k;let da=ta-g.a;da=Math.atan2(Math.sin(da),Math.cos(da));g.a+=da*k;
+ for(const [id,q] of remote){if(q.rc!==S.mp.id)continue;
+  const ta=+q.a||0;let g=S.G[id]||(S.G[id]={x:q.x,y:q.y,a:ta});g.x+=(q.x-g.x)*k;g.y+=(q.y-g.y)*k;let da=ta-g.a;da=Math.atan2(Math.sin(da),Math.cos(da));g.a+=da*k;
   S.ghosts.push({x:g.x,y:g.y,a:g.a,nick:cNick(q.nick),col:cCol(q.col),veh:cVeh(q.veh),pr:+q.pr||0,fin:+q.fin||0})}
  S.rank=[{me:1,nick,col,pr:S.pr,fin:S.fin},...S.ghosts].sort((a,b)=>(b.fin?1:0)-(a.fin?1:0)||(a.fin&&b.fin?a.fin-b.fin:b.pr-a.pr));
  if((S.uiT-=dt)>0)return;S.uiT=.25;const n=S.rank.length,pos=S.rank.findIndex(r=>r.me)+1;
